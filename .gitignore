@@ -1,0 +1,4 @@
+
+# kubeconfigs (do not commit)
+kubeconfig*.yaml
+kubeconfig/
