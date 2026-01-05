@@ -35,6 +35,15 @@ Here's a few details on the process involved during application code build and d
 
 <img src="images/build-deploy.png" width="700" height="">
 
+## Kubernetes Deployment (Local)
+
+### Apply manifests
+```bash
+kubectl apply -f k8s/
+kubectl get pods -w
+kubectl get svc jenkins-cicd-demo-svc
+
+
 
 ## Create the Jenkins server
 
@@ -205,3 +214,14 @@ To do
 **Symptom:** `pipeline: command not found` and syntax errors  
 **Cause:** Jenkinsfile is Groovy pipeline syntax and must be executed by Jenkins, not bash.  
 **Fix:** Saved the pipeline code into a `Jenkinsfile`, committed, pushed to GitHub, and re-ran the Jenkins job.
+
+And add this to your troubleshooting section:
+
+```md
+### 4) Kubernetes apply failed: `the path "k8s/" does not exist`
+**Cause:** Kubernetes manifests directory hadn’t been created yet.  
+**Fix:** Created `k8s/` folder and added `deployment.yaml` + `service.yaml`.
+
+### 5) Pod initially `Pending/ContainerCreating`
+**Cause:** Kubernetes was pulling the image and starting the container (normal).  
+**Fix:** Monitored with `kubectl get pods -w` until the pod became `Running`.
