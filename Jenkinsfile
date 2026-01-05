@@ -53,15 +53,19 @@ pipeline {
     }
 
     stage('Deploy to Kubernetes') {
-      steps {
-        withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
-          sh '''
-            set -e
-            kubectl apply -f k8s/
-            kubectl rollout status deployment/jenkins-cicd-demo --timeout=120s
-          '''
-        }
-      }
+  steps {
+    withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+      sh '''
+        set -e
+
+        echo "Kubeconfig path: $KUBECONFIG"
+        kubectl --kubeconfig "$KUBECONFIG" get nodes
+
+        # KIND + host.docker.internal causes TLS hostname mismatch during OpenAPI validation
+        kubectl --kubeconfig "$KUBECONFIG" apply --validate=false -f k8s/
+
+        kubectl --kubeconfig "$KUBECONFIG" rollout status deployment/jenkins-cicd-demo --timeout=120s
+      '''
     }
   }
 }
