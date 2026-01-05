@@ -50,3 +50,15 @@ pipeline {
     }
   }
 }
+stage('Deploy to Kubernetes') {
+  steps {
+    withCredentials([file(credentialsId: 'kubeconfig-kind', variable: 'KUBECONFIG')]) {
+      sh '''
+        set -e
+        kubectl version --client
+        kubectl apply -f k8s/
+        kubectl rollout status deployment/jenkins-cicd-demo
+      '''
+    }
+  }
+}
