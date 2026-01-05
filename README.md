@@ -187,3 +187,21 @@ To do
 - Setup pipeline job
 - Kubernetes deployment 
   https://github.com/linuxacademy/cicd-pipeline-train-schedule-kubernetes/blob/example-solution/train-schedule-kube.yml
+
+
+## Troubleshooting / What Broke and How I Fixed It
+
+### 1) Jenkins pipeline failed: `docker: not found`
+**Symptom:** Build stage failed with `docker: not found`  
+**Cause:** Jenkins container did not include the Docker CLI.  
+**Fix:** Built a custom Jenkins image with Docker CLI (and curl) installed, then restarted Jenkins using that image.
+
+### 2) Jenkins pipeline failed: Docker socket permission denied
+**Symptom:** `permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock`  
+**Cause:** Jenkins user inside the container lacked permission to access `/var/run/docker.sock`.  
+**Fix:** Re-ran Jenkins container with the Docker socket mounted and added the Docker socket group ID to the Jenkins container (`--group-add <docker_sock_gid>`). Verified by running `docker ps` inside the Jenkins container.
+
+### 3) Mistake: Tried to run Jenkinsfile in the terminal
+**Symptom:** `pipeline: command not found` and syntax errors  
+**Cause:** Jenkinsfile is Groovy pipeline syntax and must be executed by Jenkins, not bash.  
+**Fix:** Saved the pipeline code into a `Jenkinsfile`, committed, pushed to GitHub, and re-ran the Jenkins job.
