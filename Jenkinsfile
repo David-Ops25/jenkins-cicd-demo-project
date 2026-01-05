@@ -53,17 +53,14 @@ pipeline {
     }
 
     stage('Deploy to Kubernetes') {
-      steps {
-        withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
-          sh '''
-            set -e
-            kubectl --kubeconfig "$KUBECONFIG" get nodes
-            kubectl --kubeconfig "$KUBECONFIG" apply --validate=false -f k8s/
-            kubectl --kubeconfig "$KUBECONFIG" rollout status deployment/jenkins-cicd-demo --timeout=120s
-          '''
-        }
-      }
+  steps {
+    withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+      sh '''
+        set -e
+        kubectl --kubeconfig "$KUBECONFIG" --insecure-skip-tls-verify=true get nodes
+        kubectl --kubeconfig "$KUBECONFIG" --insecure-skip-tls-verify=true apply --validate=false -f k8s/
+        kubectl --kubeconfig "$KUBECONFIG" --insecure-skip-tls-verify=true rollout status deployment/jenkins-cicd-demo --timeout=120s
+      '''
     }
-
   }
 }
