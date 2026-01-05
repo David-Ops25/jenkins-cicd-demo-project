@@ -1,48 +1,42 @@
-pipeline {
-    agent any
-    
-    environment {
-        GIT_REPO = 'https://github.com/halflogic/cicd-pipeline-train-schedule-kubernetes.git'
-        GIT_CREDS = 'github-key'
-        GIT_BRANCH = '*/master'
-        DOCKER_IMAGE_NAME = 'halflogic/train-schedule'
-        DOCKER_REGISTRY = 'https://registry.hub.docker.com'
-        DOCKER_CREDS = 'dockerhub-login'
-        ARTIFACT_FILE = 'dist/trainSchedule.zip'
+/**
+ * Reusable helper to build and optionally push a Docker image from Jenkins Pipeline.
+ *
+ * Usage in Jenkinsfile:
+ *   def img = load 'scripts/buildImage.groovy'
+ *   img.buildAndPush(imageName: 'angyu84/jenkins-cicd-demo-app',
+ *                    registryUrl: 'https://index.docker.io/v1/',
+ *                    credsId: 'dockerhub-creds',
+ *                    push: true)
+ */
 
-    }
+def buildAndPush(Map args = [:]) {
+  String imageName   = args.imageName   ?: error("imageName is required")
+  String registryUrl = args.registryUrl ?: ""
+  String credsId     = args.credsId     ?: ""
+  boolean push       = (args.push != null) ? args.push as boolean : false
 
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout([
-                    $class: 'GitSCM', branches: [[name: "${env.GIT_BRANCH}"]], 
-                    doGenerateSubmoduleConfigurations: false, 
-                    extensions: [], 
-                    submoduleCfg: [], 
-                    userRemoteConfigs: [[
-                        credentialsId: "${env.GIT_CREDS}", 
-                        url: "${env.GIT_REPO}"]]
-                        ])
-            }
-        }
-        stage('Build') {
-            steps {
-                echo 'Running build automation'
-                sh './gradlew build --no-daemon'
-                archiveArtifacts artifacts: "${env.ARTIFACT_FILE}"
-            }
-        }
-        stage('Push Docker Image') {
-            steps {
-                script {
-                    app = docker.build("${env.DOCKER_IMAGE_NAME}")
-                    docker.withRegistry("${env.DOCKER_REGISTRY}", "${env.DOCKER_CREDS}") {
-                        app.push("${env.BUILD_NUMBER}")
-                        app.push("latest")
-                    }
-                }
-            }
-        }
+  String tag = env.BUILD_NUMBER ?: "local"
+
+  echo "Building Docker image: ${imageName}:${tag}"
+  def app = docker.build("${imageName}:${tag}")
+
+  if (push) {
+    if (!registryUrl?.trim()) {
+      error("registryUrl is required when push=true")
     }
+    if (!credsId?.trim()) {
+      error("credsId is required when push=true")
+    }
+    echo "Pushing Docker image to registry: ${registryUrl}"
+    docker.withRegistry("${registryUrl}", "${credsId}") {
+      app.push("${tag}")
+      app.push("latest")
+    }
+  } else {
+    echo "push=false, skipping registry push"
+  }
+
+  return app
 }
+
+return this
