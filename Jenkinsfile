@@ -6,12 +6,15 @@ pipeline {
     IMAGE_REMOTE  = "davidangyu/jenkins-cicd-demo-app"
     REGISTRY_URL  = "https://index.docker.io/v1/"
     DOCKER_CREDS  = "dockerhub-creds"
+    KUBECONFIG_CRED = "kubeconfig-kind"
   }
 
   stages {
 
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     stage('Build Docker Image') {
@@ -48,17 +51,17 @@ pipeline {
         '''
       }
     }
-  }
-}
-stage('Deploy to Kubernetes') {
-  steps {
-    withCredentials([file(credentialsId: 'kubeconfig-kind', variable: 'KUBECONFIG')]) {
-      sh '''
-        set -e
-        kubectl version --client
-        kubectl apply -f k8s/
-        kubectl rollout status deployment/jenkins-cicd-demo
-      '''
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+          sh '''
+            set -e
+            kubectl apply -f k8s/
+            kubectl rollout status deployment/jenkins-cicd-demo --timeout=120s
+          '''
+        }
+      }
     }
   }
 }
