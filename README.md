@@ -6,6 +6,22 @@ https://www.atlassian.com/continuous-delivery/principles/continuous-integration-
 
 ## Overview
 
+## Remodeled Demo App (This Repo)
+
+This repository has been remodeled into a runnable CI/CD demo project:
+
+- **App:** Simple Node.js HTTP API (`app/`)
+- **Container:** `Dockerfile` builds a lightweight image
+- **CI Pipeline:** `Jenkinsfile` builds the image and runs a smoke test container
+
+### Run locally with Docker
+
+```bash
+docker build -t jenkins-cicd-demo-app:1.0 .
+docker run --rm -p 3000:3000 jenkins-cicd-demo-app:1.0
+curl -s http://localhost:3000
+
+
 In this demo, we will be creating jobs in Jenkins that will handle application code build and deploying it to a Docker Container and Kubernetes cluster in AWS EKS. 
 
 For creating the Kubernetes cluster, please refer to the AWS EKS Demo guide here:\
