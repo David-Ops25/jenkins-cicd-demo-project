@@ -2,10 +2,10 @@ pipeline {
   agent any
 
   environment {
-    IMAGE_LOCAL   = "jenkins-cicd-demo-app"
-    IMAGE_REMOTE  = "davidangyu/jenkins-cicd-demo-app"
-    REGISTRY_URL  = "https://index.docker.io/v1/"
-    DOCKER_CREDS  = "dockerhub-creds"
+    IMAGE_LOCAL     = "jenkins-cicd-demo-app"
+    IMAGE_REMOTE    = "davidangyu/jenkins-cicd-demo-app"
+    REGISTRY_URL    = "https://index.docker.io/v1/"
+    DOCKER_CREDS    = "dockerhub-creds"
     KUBECONFIG_CRED = "kubeconfig-kind"
   }
 
@@ -53,19 +53,17 @@ pipeline {
     }
 
     stage('Deploy to Kubernetes') {
-  steps {
-    withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
-      sh '''
-        set -e
-
-        echo "Kubeconfig path: $KUBECONFIG"
-        kubectl --kubeconfig "$KUBECONFIG" get nodes
-
-        # KIND + host.docker.internal causes TLS hostname mismatch during OpenAPI validation
-        kubectl --kubeconfig "$KUBECONFIG" apply --validate=false -f k8s/
-
-        kubectl --kubeconfig "$KUBECONFIG" rollout status deployment/jenkins-cicd-demo --timeout=120s
-      '''
+      steps {
+        withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+          sh '''
+            set -e
+            kubectl --kubeconfig "$KUBECONFIG" get nodes
+            kubectl --kubeconfig "$KUBECONFIG" apply --validate=false -f k8s/
+            kubectl --kubeconfig "$KUBECONFIG" rollout status deployment/jenkins-cicd-demo --timeout=120s
+          '''
+        }
+      }
     }
+
   }
 }
