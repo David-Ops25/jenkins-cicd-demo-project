@@ -2,17 +2,10 @@ pipeline {
   agent any
 
   environment {
-    // Kubeconfig inside Jenkins container
     KUBECONFIG = '/var/jenkins_home/.kube/config.jenkins'
-
-    // App / image settings
-    APP_NAME = 'jenkins-cicd-demo-project'
+    APP_NAME  = 'jenkins-cicd-demo-project'
     IMAGE_TAG = "${BUILD_NUMBER}"
-
-    // Kubernetes manifests directory
-    K8S_DIR = 'k8s'
-
-    // Set this ONLY if you want to push to Docker Hub later
+    K8S_DIR   = 'k8s'
     DOCKERHUB_REPO = ''
   }
 
@@ -26,10 +19,7 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-        sh '''
-          echo "Commit:"
-          git log -1 --oneline
-        '''
+        sh 'git log -1 --oneline'
       }
     }
 
@@ -37,7 +27,7 @@ pipeline {
       steps {
         sh '''
           set -e
-          echo "=== Jenkins runtime ==="
+          echo "=== Runtime ==="
           whoami
           uname -a
 
@@ -58,9 +48,7 @@ pipeline {
       steps {
         sh '''
           set -e
-          echo "=== Build Docker image ==="
           docker build -t ${APP_NAME}:${IMAGE_TAG} .
-          docker images | head -n 10
         '''
       }
     }
@@ -70,15 +58,16 @@ pipeline {
         sh '''
           set -e
           echo "=== Load image into kind ==="
+          KIND_BIN="/tmp/kind"
 
-          if ! command -v kind >/dev/null 2>&1; then
-            echo "Installing kind..."
-            curl -L -o /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
-            chmod +x /usr/local/bin/kind
+          if [ ! -x "$KIND_BIN" ]; then
+            echo "Installing kind to $KIND_BIN ..."
+            curl -L -o "$KIND_BIN" https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
+            chmod +x "$KIND_BIN"
           fi
 
-          kind version
-          kind load docker-image ${APP_NAME}:${IMAGE_TAG} --name devops-lab
+          "$KIND_BIN" version
+          "$KIND_BIN" load docker-image ${APP_NAME}:${IMAGE_TAG} --name devops-lab
         '''
       }
     }
@@ -87,30 +76,19 @@ pipeline {
       steps {
         sh '''
           set -e
-          echo "=== Deploy to Kubernetes ==="
-
-          test -d "${K8S_DIR}" || (echo "Missing ${K8S_DIR}/ directory" && exit 1)
+          echo "=== Deploy ==="
 
           kubectl apply -f "${K8S_DIR}/"
 
-          DEPLOY_NAME=$(kubectl get deploy -o jsonpath='{.items[0].metadata.name}')
-          CONTAINER_NAME=$(kubectl get deploy "$DEPLOY_NAME" -o jsonpath='{.spec.template.spec.containers[0].name}')
+          DEPLOY=$(kubectl get deploy -o jsonpath='{.items[0].metadata.name}')
+          CONTAINER=$(kubectl get deploy "$DEPLOY" -o jsonpath='{.spec.template.spec.containers[0].name}')
 
-          echo "Deployment: $DEPLOY_NAME"
-          echo "Container:  $CONTAINER_NAME"
+          echo "Deployment: $DEPLOY"
+          echo "Container:  $CONTAINER"
 
-          if [ -n "${DOCKERHUB_REPO}" ]; then
-            NEW_IMAGE="${DOCKERHUB_REPO}:${IMAGE_TAG}"
-          else
-            NEW_IMAGE="${APP_NAME}:${IMAGE_TAG}"
-          fi
+          kubectl set image deployment/"$DEPLOY" "$CONTAINER"="${APP_NAME}:${IMAGE_TAG}"
+          kubectl rollout status deployment/"$DEPLOY" --timeout=180s
 
-          echo "Setting image to: $NEW_IMAGE"
-          kubectl set image deployment/"$DEPLOY_NAME" "$CONTAINER_NAME"="$NEW_IMAGE"
-
-          kubectl rollout status deployment/"$DEPLOY_NAME" --timeout=180s
-
-          echo "=== Cluster resources ==="
           kubectl get deploy,po,svc -o wide
         '''
       }
@@ -120,7 +98,7 @@ pipeline {
   post {
     always {
       sh '''
-        echo "=== Final cluster snapshot ==="
+        echo "=== Final snapshot ==="
         kubectl get pods -o wide || true
         kubectl get svc -o wide || true
       '''
