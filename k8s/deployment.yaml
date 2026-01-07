@@ -1,23 +1,9 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jenkins-cicd-demo
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: jenkins-cicd-demo
-  template:
-    metadata:
-      labels:
-        app: jenkins-cicd-demo
-    spec:
-      containers:
-        - name: app
-          image: davidangyu/jenkins-cicd-demo-app:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 3000
-          env:
-            - name: PORT
-              value: "3000"
+containers:
+  - name: app
+    image: jenkins-cicd-demo-project:latest
+    imagePullPolicy: IfNotPresent
+    ports:
+      - containerPort: 3000
+    env:
+      - name: PORT
+        value: "3000"
