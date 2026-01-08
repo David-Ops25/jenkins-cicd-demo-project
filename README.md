@@ -1,227 +1,118 @@
-# Jenkins CI/CD Demo (AWS)
+# Jenkins CI/CD Demo Project (Docker + Kubernetes/kind)
 
-For an introduction on CI/CD, here's a great write up from Atlassian that you can read on:\
-https://www.atlassian.com/continuous-delivery/principles/continuous-integration-vs-delivery-vs-deployment
+A recruiter-friendly, reproducible CI/CD demo that builds a Node.js app into a Docker image with **Jenkins**, deploys it to **Kubernetes** (via **kind**), and validates that the app is actually reachable.
 
+> This repo is intentionally small, but the workflow mirrors the day-to-day problems teams solve: CI runners building containers, Kubernetes rollouts, service networking, and “pipeline green” vs “app works”.
 
-## Overview
+---
 
-## Remodeled Demo App (This Repo)
+## What this project demonstrates
 
-This repository has been remodeled into a runnable CI/CD demo project:
+### ✅ What works today
+- **Pipeline**: Jenkins checks out code, builds a Docker image, loads it into a local kind cluster, applies Kubernetes manifests, updates the Deployment image, and waits for rollout completion.
+- **Kubernetes**: A `Deployment` runs the app and a `Service` exposes it (NodePort + port-forward for reliable local access).
+- **Verification**: A smoke test (HTTP 200) proves the app is reachable.
 
-- **App:** Simple Node.js HTTP API (`app/`)
-- **Container:** `Dockerfile` builds a lightweight image
-- **CI Pipeline:** `Jenkinsfile` builds the image and runs a smoke test container
+### Why this is realistic
+Local Kubernetes in containers (kind) frequently surfaces real-world issues:
+- Docker-in-Docker and permissions
+- kubeconfig/context problems from CI containers
+- ImagePullBackOff vs local images
+- NodePort “works in YAML” but not from `localhost`
 
-### Run locally with Docker
+---
 
+## Repository layout
+
+```text
+.
+├── app/                 # Node.js demo API
+├── k8s/                 # Kubernetes manifests (Deployment + Service)
+├── scripts/             # Helper scripts
+├── Dockerfile           # App image
+├── Dockerfile.jenkins   # Jenkins image (tooling baked in)
+├── Jenkinsfile          # CI/CD pipeline
+└── docs/                # Professional documentation (added in this pack)
+```
+
+---
+
+## Prerequisites
+
+- Docker
+- kubectl
+- kind
+- (Optional) Jenkins running in Docker, using the provided `Dockerfile.jenkins`
+
+---
+
+## Quick start (local, without Jenkins)
+
+### 1) Build image
 ```bash
-docker build -t jenkins-cicd-demo-app:1.0 .
-docker run --rm -p 3000:3000 jenkins-cicd-demo-app:1.0
-curl -s http://localhost:3000
+docker build -t jenkins-cicd-demo-project:local .
+```
 
-
-In this demo, we will be creating jobs in Jenkins that will handle application code build and deploying it to a Docker Container and Kubernetes cluster in AWS EKS. 
-
-For creating the Kubernetes cluster, please refer to the AWS EKS Demo guide here:\
-https://github.com/halflogic/aws-eks-demo
-
-The diagram below is high-level overview of how CI/CD pipelines may be applied to an organization and the teams involved within process.
-
-<img src="images/cicd.png" width="700" height="">
-
-Here's a few details on the process involved during application code build and deployment. Infrastructure as Code (IaC) is also integrated in the build process that contains deployment configurations for the k8s pods.
-
-<img src="images/build-deploy.png" width="700" height="">
-
-## Kubernetes Deployment (Local)
-
-### Apply manifests
+### 2) Create kind cluster (if you don't already have one)
 ```bash
+kind create cluster --name devops-lab
+kubectl config use-context kind-devops-lab
+```
+
+### 3) Load image into kind + deploy
+```bash
+kind load docker-image jenkins-cicd-demo-project:local --name devops-lab
 kubectl apply -f k8s/
-kubectl get pods -w
-kubectl get svc jenkins-cicd-demo-svc
+kubectl rollout status deploy/jenkins-cicd-demo --timeout=180s
+```
 
+### 4) Access the app (recommended)
+**Port-forward (most reliable with kind):**
+```bash
+kubectl port-forward svc/jenkins-cicd-demo-svc 8081:80
+curl -i http://localhost:8081
+```
 
+---
 
-## Create the Jenkins server
+## Run with Jenkins (CI/CD)
 
-References: \
-https://docs.aws.amazon.com/AmazonECS/latest/developerguide/docker-basics.html \
-https://gist.github.com/npearce/6f3c7826c7499587f00957fee62f8ee9 \
-https://www.jenkins.io/doc/book/installing \
-https://github.com/jenkinsci/docker/blob/master/README.md
+### High-level pipeline stages
+1. Checkout
+2. Tooling debug (prints versions + contexts)
+3. Build Docker image
+4. Load image into kind
+5. Deploy manifests
+6. Update image + wait for rollout
+7. (Optional) Smoke test
 
-1. Create an ec2 instance with Amazon Linux 2, t3.small would be fine for this demo. You may need a larger instance once your demand increases.
+See: **docs/PIPELINE-WALKTHROUGH.md**
 
-2. Install and configure docker.
+---
 
-   ```
-   # docker installation
-   sudo yum update -y
-   sudo amazon-linux-extras install docker -y
-   sudo service docker start
-   sudo usermod -a -G docker ec2-user
-   sudo chkconfig docker on
-   sudo yum install -y git
-   # logout/restart
-   ```
+## Common commands used (audit trail)
 
-3. Setup Jenkins. For this step, Jenkins will be pulled from a [custom docker image](https://github.com/halflogic/jenkins-docker) that has all the requirements to run the build examples.\
-   https://github.com/halflogic/jenkins-docker
+All commands used while building/debugging this repo are captured in:
+- **docs/COMMANDS.md**
+- **docs/TROUBLESHOOTING.md**
 
-   ```
-   # run jenkins in detached mode
-   docker container run -p 8080:8080 -p 50000:50000 \
-    -v jenkins_home:/var/jenkins_home \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    --restart unless-stopped --detach \
-    --name jenkins-docker halflogic/jenkins-docker
+This makes it easy for reviewers to understand what was run and why.
 
-   # get the initialAdminPassword
-   docker exec -it $(docker ps -aqf "name=jenkins-lts") cat /var/jenkins_home/secrets/initialAdminPassword
-   ```
+---
 
-4. Grab the IP of the ec2 instance and open Jenkins in a browser: http://your-ec2-instance-ip:8080 \
-   Go through the Jenkins setup wizard, install the recommended plugins and setup an admin user.
+## Next improvements (roadmap)
 
+These are the “production-style” upgrades that real teams care about:
 
-## Code Build and Deployment Requirements
+1. **Health probes**: readiness/liveness probes (K8s)
+2. **Resource limits**: CPU/memory requests & limits
+3. **Security context**: runAsNonRoot, drop capabilities, read-only FS (where possible)
+4. **Remove `kubectl set image`**: make Git the source of truth via Kustomize/Helm or manifest templating
+5. **Push to a registry**: Docker Hub/GHCR with immutable tags (Git SHA)
+6. **Automated quality gates**: lint/tests + vulnerability scanning (Trivy)
 
-1. Git Repository - Create a [GitHub](http://github.com) account
-2. Container Image Registry - Create a [Dockerhub](https://hub.docker.com/) account 
-3. Web Server - Create AWS EC2 Instance for Docker deployment example
-4. Kubernetes Cluster - [Create AWS EKS for](https://github.com/halflogic/aws-eks-demo)  Kubernetes deployment example
+---
 
+## License
 
-## Create GitHub Token
-
-1. Login to your GitHub account. \
-   Go to Settings > Developer settings > Personal access tokens > Generate new token
-
-2. Select the check boxes for the following scopes:
-   - repo: (check all boxes)
-   - admin:repo_hook (check all boxes)
-   - user: user:email (check user:email box only)
-
-3. Copy the generated token and save it in a secure way.
-
-
-## Setup Credentials in Jenkins
-
-1. Open Jenkins > Manage Jenkins > Manage Credentials
-
-2. Under Stores scoped to Jenkins, click on (global)
-
-3. Add all the required credentials for github, dockerhub, webserver.. etc.
-
-   <img src="images/jenkins-credentials.png" width="700" height="">
-
-
-## Create Pipeline Job
-
-Reference:
-https://www.jenkins.io/doc/book/pipeline/
-
-Create a pipeline job to test if docker commands can be executed within Jenkins.
-
-1. Jenkins > New Item > Enter an item name: hello-docker
-
-2. Click Pipeline > click [ OK ]
-
-3. In the "Pipeline script" text area, enter the code below and click [ Save ]
-   ```
-   pipeline {
-       agent any
-   
-       stages {
-           stage('Hello Docker') {
-               steps {
-                   echo 'Hello Docker'
-               }
-           }
-           stage('Run Docker') {
-               steps {
-                   script {
-                       sh '''
-                       docker info
-                       docker images
-                       '''
-                   }
-               }
-           }
-       }
-   }
-   ```
-
-4. Click [ Build Now ] \
-   Once the build completes, click on the pipeline logs to inspect the output
-
-   <img src="images/pipeline-hello-docker.png" width="700" height="">
-
-
-## Pipeline Build using Jenkinsfile
-
-Reference: https://www.jenkins.io/doc/book/pipeline/jenkinsfile/
-
-This example will use a Node.js app forked from [Linux Academy](https://linuxacademy.com/) 
-
-Repository URL:\
-https://github.com/halflogic/cicd-pipeline-train-schedule-dockerdeploy
-
-Jenkinsfile:\
-https://github.com/halflogic/cicd-pipeline-train-schedule-dockerdeploy/blob/master/Jenkinsfile
-
-1. Create a new Pipeline job using the same steps above
-
-2. In the Pipeline section, we'll select "Pipeline script from SCM" and enter the required parameters:\
-   Repository URL: https://github.com/halflogic/cicd-pipeline-train-schedule-dockerdeploy \
-   Credentials: Select your Github key\
-   Branch: master\
-   Script Path: Jenkinsfile
-   
-   <img src="images/pipeline-jenkinsfile.png" width="700" height="">
-
-3. Save and run Build Now.
-
-
-## Pipeline Build and Kubernetes Deployment
-
-To do
-- Install kubernetes-deploy jenkins plugin
-- Add kubeconfig in jenkins credential
-- Fork repo: 
-  https://github.com/linuxacademy/cicd-pipeline-train-schedule-kubernetes
-- Setup pipeline job
-- Kubernetes deployment 
-  https://github.com/linuxacademy/cicd-pipeline-train-schedule-kubernetes/blob/example-solution/train-schedule-kube.yml
-
-
-## Troubleshooting / What Broke and How I Fixed It
-
-### 1) Jenkins pipeline failed: `docker: not found`
-**Symptom:** Build stage failed with `docker: not found`  
-**Cause:** Jenkins container did not include the Docker CLI.  
-**Fix:** Built a custom Jenkins image with Docker CLI (and curl) installed, then restarted Jenkins using that image.
-
-### 2) Jenkins pipeline failed: Docker socket permission denied
-**Symptom:** `permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock`  
-**Cause:** Jenkins user inside the container lacked permission to access `/var/run/docker.sock`.  
-**Fix:** Re-ran Jenkins container with the Docker socket mounted and added the Docker socket group ID to the Jenkins container (`--group-add <docker_sock_gid>`). Verified by running `docker ps` inside the Jenkins container.
-
-### 3) Mistake: Tried to run Jenkinsfile in the terminal
-**Symptom:** `pipeline: command not found` and syntax errors  
-**Cause:** Jenkinsfile is Groovy pipeline syntax and must be executed by Jenkins, not bash.  
-**Fix:** Saved the pipeline code into a `Jenkinsfile`, committed, pushed to GitHub, and re-ran the Jenkins job.
-
-And add this to your troubleshooting section:
-
-```md
-### 4) Kubernetes apply failed: `the path "k8s/" does not exist`
-**Cause:** Kubernetes manifests directory hadn’t been created yet.  
-**Fix:** Created `k8s/` folder and added `deployment.yaml` + `service.yaml`.
-
-### 5) Pod initially `Pending/ContainerCreating`
-**Cause:** Kubernetes was pulling the image and starting the container (normal).  
-**Fix:** Monitored with `kubectl get pods -w` until the pod became `Running`.
+MIT (see `LICENSE`)
